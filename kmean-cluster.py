@@ -21,25 +21,28 @@ cluster format
 def Classify(cluster, descriptors):
     total = len(cluster)
     
+    # initialize centroid array
     centroid = [[np.zeros(128, np.float32)] for i in range(K+1)]
     centroidOld = [[np.zeros(128, np.float32)] for i in range(K+1)]
 
-
+    # new cluster
     clusterN = []
     for i in range(K):
         clusterN.append([cluster[i]])
-            
+    
+    # mark the image in which cluster        
     clusterMark = {}
     for item in cluster:
         clusterMark[item] = -1
-            
+    
+    # calculate the centroid        
     for index in range(len(centroid)-1):
         centroid[index] = descriptors[clusterN[index][0]]['descriptor']
         centroidOld[index] = centroid[index].copy()
 
     for ite in range(ITERATION):
         for item in cluster:
-            
+            # find the closest cluster
             distance_min = cv2.norm(descriptors[item]['descriptor'], centroid[0])
             min_index = 0
             for index in range(1, len(centroid)-1):
@@ -47,23 +50,29 @@ def Classify(cluster, descriptors):
                 if distance < distance_min:
                     distance_min = distance
                     min_index = index
-                
+            
+            # update mark
             if clusterMark[item] >= 0:
                 clusterN[clusterMark[item]].remove(item)
+            # update cluster
             clusterN[min_index].append(item)
             clusterMark[item] = min_index
+            # update centroid
             centroid[min_index] = (centroid[min_index]*(len(clusterN[min_index])-1) + descriptors[item]['descriptor']) / len(clusterN[min_index])
         
+        # calculate cuntroid difference with the old one
         sumCentroid = 0
         sumDiff = 0
         for index in range(len(centroid)-1):
             sumCentroid = sumCentroid + centroid[index]
             sumDiff = sumDiff + cv2.norm(centroid[index], centroidOld[index])
                 
+        # finish
         if sumDiff < CENTROID_THRES:
             print 'Converged after', ite, 'iterations'
             centroid[-1] = sumCentroid / (len(centroid)-1)
             break
+        # do clustering again
         else:
             for index in range(len(centroid)-1):
                 centroidOld[index] = centroid[index].copy()
@@ -73,7 +82,10 @@ def Classify(cluster, descriptors):
     
                 
 
+# find the closest cluster
+# for query
 def FindClosest(all, query):
+    # is leave or not, the index is different
     isLeave = not isinstance(all[0],list)
       
     if isLeave:
@@ -100,10 +112,9 @@ def FindClosest(all, query):
 filename = ['0.jpg', '1.jpg', '2.jpg', '3.jpg', '4.jpg']
 
 descriptors = []
-for index in range(1):#len(filename)):
+print 'building up cluster, this takes a while...'
+for index in range(len(filename)):
     img = cv2.imread(filename[index],cv2.IMREAD_GRAYSCALE)
-    #img = cv2.imread(filename[index],cv2.IMREAD_COLOR)  
-    #gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
     
     #SIFT  
     detector = cv2.SIFT()  
@@ -113,8 +124,9 @@ for index in range(1):#len(filename)):
 
 
 cluster = [i for i in range(len(descriptors))]
+# first layer clustering
 centroid, cluster = Classify(cluster, descriptors) #return centroid,cluster
-# build the second layer tree
+# second layer clustering
 for i in range(len(cluster)):
     centroid[i],cluster[i] = Classify(cluster[i], descriptors)
 
@@ -125,15 +137,18 @@ for i in range(len(cluster)):
 query = 'query.jpg'
 imgq = cv2.imread(query,cv2.IMREAD_GRAYSCALE)
 
+# SIFT
 detector = cv2.SIFT()  
-keypoints,descriptor = detector.detectAndCompute(img,None)
+keypoints,descriptor = detector.detectAndCompute(imgq,None)
 
 matchCount = [0 for i in filename]
 for des in descriptor:
+    # find the closest cluster
     min_index = []
     min_index.append(FindClosest(centroid[0:-1], des))
     min_index.append(FindClosest(centroid[min_index[0]][0:-1], des))
     
+    # count image 
     for item in cluster[min_index[0]][min_index[1]]:
         imgNum = descriptors[item]['img']
         matchCount[imgNum] = matchCount[imgNum] + 1
